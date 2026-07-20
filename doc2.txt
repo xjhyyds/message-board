@@ -1,0 +1,438 @@
+--- Page 1 ---
+方向
+核心目标
+适用环境
+前置依赖
+方向
+一
+从零搭建3节点物理K8s集群
+VMware/VirtualBox + Ubuntu
+Server
+宿主机8GB内存、50GB磁盘
+方向
+二
+接入MySQL数据库（有状态服
+务）
+Docker Desktop K8s
+已完成基础留言板部署
+方向
+三
+用户认证与权限管理（JWT）
+Docker Desktop K8s
+已完成方向二（MySQL已接
+入）
+方向
+四
+自选项目完整部署
+Docker Desktop K8s
+拥有完整的前后端分离项目
+云平台综合实训 · 拓展方向汇总
+ 
+📋 总览
+ 
+本拓展文档为已达到云平台综合实训基础要求的学生提供四个可选进阶方向。四个方向分别覆盖Kubernetes技能树
+的不同分支，学生可根据自身兴趣和环境条件选择其中任意方向完成。
+📌 方向选择建议
+ 
+方向一 适合对基础设施感兴趣、想深入理解Kubernetes底层架构的学生。需要额外准备VMware虚拟化环境，与
+手册主体（Docker Desktop）的环境不同，建议作为独立分支完成。
+方向二 适合想掌握有状态应用部署、持久化存储等运维技能的学生。基于本手册的Docker Desktop环境，可与基
+础部署无缝衔接。
+方向三 适合对业务功能拓展、用户认证机制感兴趣的学生。需先完成方向二，在已有数据库基础上进行功能迭
+代。
+方向四 适合已有自己独立开发项目（如课程设计、毕业设计、个人作品）的学生，将项目容器化并部署到
+Kubernetes集群，实现“自己的项目上云”。
+⭐选用班级留言板项目可以自选方向一、二、三进行项目拓展和完善
+⭐选用方向四（自己开发的项目）可以不用完成班级留言板项目，直接用自己的项目完成整个实训要求即可
+
+--- Page 2 ---
+序号
+检查项
+要求
+1
+虚拟机环境信息
+3台虚拟机IP地址表 + 互相ping通截图 + /etc/hosts内容截图
+2
+K8s组件安装验证
+所有节点kubeadm版本截图 + containerd运行状态截图
+3
+集群状态验证
+kubectl get nodes显示3节点Ready截图 + kube-flannel Pod运行截图
+4
+镜像构建验证
+docker images显示message-api和message-frontend等镜像截图
+5
+应用部署验证
+kubectl get all -n message-board全部Running截图
+6
+前端访问验证
+浏览器访问前端页面截图（显示已有留言"老师"那条）
+7
+后端健康检查
+浏览器访问http://节点IP:30080/health返回JSON截图
+8
+留言功能验证
+提交3条留言后页面截图 + 留言列表完整截图
+9
+Pod分布验证
+kubectl get pods -o wide显示Pod分布在多个节点截图
+方向一：从零搭建3节点Kubernetes集
+群
+ 
+📋 任务概述
+ 
+在VMware或VirtualBox中创建3台Linux虚拟机，从零搭建Kubernetes集群，并完成班级留言板的完整部署与验证。
+最终目标：掌握生产级Kubernetes集群的搭建与应用部署全流程能力。
+🎯 任务要求
+ 
+在VMware或VirtualBox中创建3台Ubuntu Server 22.04虚拟机（1 Master + 2 Worker），配置2核CPU、2GB内存、
+20GB硬盘，设置静态IP并配置/etc/hosts实现主机名解析。所有节点关闭防火墙、关闭Swap、同步时间，安装
+containerd（配置SystemdCgroup=true），安装kubeadm、kubelet、kubectl（v1.29）。Master节点执行kubeadm init初
+始化集群（pod-network-cidr=10.244.0.0/16），安装Flannel网络插件，Worker节点执行kubeadm join加入集群，最终
+所有节点状态均为Ready。
+将班级留言板项目文件复制到Master节点，构建前后端Docker镜像（message-api:v1、message-frontend:v1等镜像），
+确保镜像在集群所有节点可用。创建Namespace message-board ，部署Deployment （副本数2 ）、Service
+（NodePort ）、ConfigMap ，验证所有Pod 状态为Running 。通过NodePort 访问前端页面（http:// 任意节点
+IP:NodePort），验证健康检查接口（http://任意节点IP:30080/health）返回JSON，提交至少3条留言并确认留言
+列表正常显示。
+📝 检查要求清单
+ 
+
+--- Page 3 ---
+📌 说明
+ 
+硬件要求：宿主机至少8GB内存、50GB可用磁盘空间
+软件要求：VMware Workstation 或 VirtualBox
+操作系统：Ubuntu Server 22.04 LTS
+Kubernetes版本：v1.29
+网络插件：Flannel
+容器运行时：containerd
+完成全部任务 = 具备从零搭建生产级Kubernetes集群并部署应用的核心能力。 🚀
+方向二：接入MySQL数据库
+ 
+📋 任务概述
+ 
+在前序任务中，班级留言板的后端服务（message-api）将留言数据存储在Node.js进程的内存中。一旦Pod因故障重
+启、滚动更新或手动删除，所有留言数据将永久丢失。
+本次任务要求你在已有Kubernetes集群中部署MySQL有状态服务，并改造后端应用，将存储引擎从内存切换为
+MySQL数据库，实现留言数据的持久化存储。
+最终目标：掌握有状态应用（StatefulSet）在Kubernetes集群中的部署方法，理解PersistentVolumeClaim持久化存储与
+服务间依赖治理的运维实践。
+🎯 任务要求
+ 
+在已完成班级留言板基础部署（前端 + 后端，2个Deployment、2个Service、1个ConfigMap）的Kubernetes集群中，
+完成以下操作：
+数据库资源部署：创建Secret存储MySQL密码（Base64编码），创建PVC申请1Gi存储空间，编写init.sql初始化脚本
+（创建messages表，字段：id自增主键、name、content、created_at，并插入一条默认留言"MySQL数据库已成功接
+入！"），使用StatefulSet部署MySQL 5.7（副本数1），挂载PVC到/var/lib/mysql，挂载初始化脚本到/docker-
+entrypoint-initdb.d，创建Headless Service（clusterIP: None）供StatefulSet使用。
+后端应用改造：在backend项目中安装mysql2驱动，创建数据库连接池模块（db.js），改造POST /messages接口为
+INSERT语句，改造GET /messages接口为SELECT查询，在应用启动时执行SELECT 1检测数据库连通性（连接失败
+则进程退出，触发K8s重启），重新构建镜像并标记为message-api:v2。
+应用部署更新：修改api-deployment.yaml 添加数据库环境变量（DB_HOST=message-db-service 、
+DB_USER=app_user、DB_PASSWORD从Secret引用、DB_NAME=messages_db），为API容器添加startupProbe启动
+探针（failureThreshold: 30，periodSeconds: 5）防止数据库启动慢导致Pod被误判为CrashLoopBackOff，按顺序先部
+署数据库资源再更新API Deployment。
+数据持久化验证：通过前端提交3条留言，手动删除message-db-0 Pod（模拟故障），等待StatefulSet自动重建后刷新
+前端页面，确认所有留言数据完整保留。
+
+--- Page 4 ---
+序
+号
+检查项
+要求
+1
+Secret创建验证
+kubectl get secret db-secret -n message-board -o yaml 截图，密码字段为Base64
+编码，未明文暴露
+2
+PVC绑定状态
+kubectl get pvc -n message-board 显示 STATUS: Bound 截图
+3
+StatefulSet启动
+验证
+kubectl get statefulset -n message-board 显示 READY: 1/1 截图
+4
+数据库初始化
+验证
+kubectl logs message-db-0 -n message-board 截图，显示 ready for connections，
+且 messages 表中存在默认留言
+5
+API代码改造
+提交 backend/db.js 核心代码截图，展示数据库连接池配置
+6
+新镜像构建验
+证
+docker images 显示 message-api:v2 截图
+7
+环境变量注入
+验证
+kubectl describe pod message-api-xxx -n message-board 截图，显示 DB_HOST、
+DB_USER、DB_NAME 等环境变量已注入
+8
+启动探针配置
+验证
+kubectl get deployment message-api -n message-board -o yaml 截图，显示
+startupProbe 配置段
+9
+数据持久化测
+试
+提交3条留言后的页面截图 + kubectl delete pod message-db-0 -n message-board 命
+令截图 + 重建后留言列表完整截图（数据不丢失）
+📝 检查要求清单
+ 
+📌 说明
+ 
+前置依赖：必须已完成班级留言板基础部署（message-api 和 message-frontend 两个Deployment运行正常）。
+运行环境：本任务基于 Docker Desktop 自带的 Kubernetes 集群（单节点，执行 kubectl get nodes 显示 docker-
+desktop 节点状态为 Ready）。
+镜像构建：由于 Docker Desktop 为单节点集群，镜像构建后已在本地节点可用，无需额外分发。直接执行 docker 
+build -t message-api:v2 ./backend 即可。
+存储支持：Docker Desktop 默认提供 standard StorageClass，PVC 提交后自动绑定，无需额外配置。
+关键概念：本任务涉及StatefulSet、PVC、Headless Service、Secret、ConfigMap、启动探针等核心K8s概念，是理
+解有状态服务部署的典型场景。
+完成本任务 = 具备在Kubernetes集群中部署和管理有状态数据库服务的能力。 🚀
+
+--- Page 5 ---
+方向三：用户认证与权限管理
+ 
+📋 任务概述
+ 
+在前序任务中，班级留言板允许任何用户匿名提交留言，无任何身份验证机制。这在实际生产环境中存在安全风险
+（如恶意刷屏、冒充他人发言等）。
+本次拓展任务要求你在现有留言板基础上，增加用户注册、登录和JWT身份认证功能，实现留言与用户的绑定，并
+区分普通用户与管理员权限。
+最终目标：掌握Web应用中的用户认证机制（JWT）、权限分级管理，以及前后端分离架构下的身份验证实现。
+🎯 任务要求
+ 
+在已完成班级留言板基础部署（前端 + 后端 + MySQL数据库）的Kubernetes集群中，完成以下功能拓展：
+一、后端功能拓展
+1. 用户数据模型：在MySQL数据库中新增 users 表，字段包括：id（自增主键）、username（唯一）、
+password（需加密存储，使用bcrypt）、role（枚举类型：user / admin，默认 user）、created_at（时间
+戳）。
+2. 注册接口：新增 POST /api/auth/register 接口，接收 username 和 password，校验用户名是否已存在，密
+码需加密后存入数据库。
+3. 登录接口：新增 POST /api/auth/login 接口，验证用户名和密码，校验通过后签发 JWT Token（有效期24小
+时），返回 token 和用户信息。
+4. 认证中间件：编写JWT验证中间件，对需要登录的接口进行拦截校验（Authorization: Bearer <token>）。
+5. 留言关联用户：改造 POST /api/messages 接口，在认证状态下自动将留言与当前登录用户绑定，在 
+messages 表中新增 user_id 外键字段，关联 users 表。留言返回时携带留言人用户名。
+6. 管理员权限：新增 DELETE /api/messages/:id 接口，要求只有 role=admin 的用户才能删除留言，普通用户
+无权限。
+7. 用户信息接口：新增 GET /api/auth/me 接口，返回当前登录用户的信息（用户名、角色）。
+二、前端功能拓展
+1. 注册/登录页面：新增注册和登录表单页面，支持用户名+密码的注册登录流程。
+2. 登录状态管理：在前端实现Token存储（localStorage），并在每次API请求时自动携带 Authorization 头。
+3. 留言展示优化：每条留言显示提交者的用户名，并在用户已登录时高亮显示自己的留言。
+4. 删除权限控制：当登录用户角色为管理员时，每条留言旁显示删除按钮，点击后调用 DELETE 
+/api/messages/:id 接口删除对应留言。
+5. 登录状态UI反馈：页面右上角显示当前登录用户名，并提供退出登录按钮；未登录时显示“登录/注册”入口。
+6. 注册/登录跳转：未登录用户尝试提交留言时，自动跳转到登录页面。
+三、数据迁移与初始化
+1. 编写数据库迁移脚本（migrate.sql），包含 users 表的创建和 messages 表的结构变更（新增 user_id 外
+键）。
+2. 使用ConfigMap挂载迁移脚本，通过Init Container或手动执行完成数据库迁移。
+
+--- Page 6 ---
+序
+号
+检查项
+要求
+1
+数据库迁移
+截图 users 表和 messages.user_id 外键字段的建表语句，或 kubectl exec 进入数据库
+查询表结构的截图
+2
+用户注册功能
+使用 curl 调用注册接口的截图，返回 201 Created 状态码和用户信息JSON
+3
+用户登录功能
+使用 curl 调用登录接口的截图，返回 200 OK 和 JWT Token
+4
+Token验证
+携带Token访问 GET /api/auth/me 接口的截图，返回当前用户信息
+5
+未认证拦截
+不携带Token访问 POST /api/messages 接口，返回 401 Unauthorized 截图
+6
+留言关联用户
+登录后提交留言，查询数据库 messages 表，显示 user_id 字段已关联当前用户截图
+7
+管理员删除权
+限
+使用普通用户Token调用 DELETE /api/messages/:id，返回 403 Forbidden 截图；使用管
+理员Token调用成功，返回 200 OK
+8
+前端注册/登录
+页面
+浏览器显示注册/登录表单的截图
+9
+登录状态UI
+登录成功后页面右上角显示当前用户名，且“提交留言”功能正常的截图
+10
+留言显示用户
+名
+留言列表中每条留言显示提交者用户名的截图
+11
+管理员删除按
+钮
+以管理员身份登录后，每条留言旁出现删除按钮的截图
+12
+前端未登录保
+护
+未登录状态下访问留言板，提交留言时跳转至登录页面的截图
+13
+新镜像构建验
+证
+docker images 显示 message-api:v3 和 message-frontend:v2 截图
+14
+完整功能演示
+录制或截取完整流程：注册 → 登录 → 提交留言 → 管理员登录 → 删除留言
+3. 确保已有留言数据不受影响（user_id 字段允许NULL，历史留言显示为“匿名用户”）。
+四、部署更新
+1. 改造后端镜像为 message-api:v3，包含新增的认证模块。
+2. 改造前端镜像为 message-frontend:v2，包含新的登录/注册页面和权限控制逻辑。
+3. 更新Kubernetes Deployment配置，增加认证相关环境变量（JWT_SECRET 存入Secret）。
+4. 按顺序部署：先执行数据库迁移 → 更新后端 → 更新前端。
+📝 检查要求清单
+ 
+📌 说明
+ 
+前置依赖：必须已完成班级留言板基础部署（前端 + 后端 + MySQL数据库），且MySQL有状态服务运行正常。
+
+--- Page 7 ---
+运行环境：基于 Docker Desktop 自带的 Kubernetes 集群（单节点，执行 kubectl get nodes 显示 docker-desktop 
+节点状态为 Ready）。
+JWT密钥：JWT签名密钥必须存放在Secret中，通过环境变量（JWT_SECRET）注入后端容器，禁止硬编码。
+密码加密：用户密码必须使用bcrypt进行哈希加密存储，禁止明文存储。
+前端路由：需配置前端路由（React Router / Vue Router），支持 /login、/register、/ 三个页面切换。
+已有留言兼容：历史留言的 user_id 字段允许为NULL，前端展示时显示为“匿名用户”，不影响已有功能。
+镜像构建：Docker Desktop为单节点集群，镜像构建后已在本地节点可用，无需额外分发。
+完成本拓展方向 = 具备前后端分离架构中用户认证与权限管理的完整实现能力。 🚀
+方向四：自选项目完整部署
+ 
+📋 任务概述
+ 
+本项任务要求选择自己独立部署个人的完整项目（如课程设计、毕业设计、个人作品等），完成代码到容器化再到
+Kubernetes部署的全流程。
+最终目标：具备将任意前后端分离项目容器化并部署到Kubernetes集群的独立实操能力，实现“自己的项目上云”。
+🎯 任务要求
+ 
+一、项目要求
+1. 项目必须为前后端分离架构（前端 + 后端API），技术栈不限（Node.js/Java/Python/Go等均可）。
+2. 项目后端需涉及数据持久化存储（MySQL/PostgreSQL/MongoDB等任意数据库）。
+3. 项目应具备完整的功能闭环（如博客系统、电商系统、任务管理、内容管理等），纯静态页面或仅单页展示
+类项目不适用。
+4. 项目代码为学生本人独立开发，或团队合作项目中承担主要开发角色。
+二、容器化要求
+1. 为前端和后端分别编写Dockerfile，要求采用多阶段构建优化镜像体积。
+2. 编写.dockerignore文件，排除node_modules、日志文件等构建上下文中的冗余内容。
+3. 使用非root用户运行容器进程，确保容器安全性。
+4. 为后端服务配置健康检查（HEALTHCHECK或HTTP探针）。
+5. 使用docker build分别构建前端和后端镜像，镜像命名规范为：<项目名>-frontend:<版本> 和 <项目名>-
+backend:<版本>。
+三、Kubernetes部署要求
+1. 创建独立的Namespace（命名规范：<项目名>-prod）。
+2. 为后端服务创建Deployment（副本数 ≥ 2），配置资源限制（requests/limits）和存活探针/就绪探针。
+3. 为前端服务创建Deployment（副本数 ≥ 2），配置资源限制。
+
+--- Page 8 ---
+序
+号
+检查项
+要求
+1
+项目说明
+提交项目简介文档（300字以内），说明项目功能、技术栈、架构图
+2
+项目源代码
+提交完整项目源码（Git仓库链接或压缩包），需包含README
+3
+前端Dockerfile
+提交前端Dockerfile截图，展示多阶段构建或优化措施
+4
+后端Dockerfile
+提交后端Dockerfile截图，展示多阶段构建或优化措施
+5
+.dockerignore
+提交.dockerignore文件截图
+6
+镜像构建验证
+docker images 截图，显示项目前后端镜像
+7
+Namespace创建
+kubectl get ns 截图，显示项目Namespace
+8
+数据库StatefulSet
+kubectl get statefulset -n <namespace> 截图，显示 READY: 1/1
+9
+PVC绑定状态
+kubectl get pvc -n <namespace> 截图，显示 STATUS: Bound
+10
+Secret创建验证
+kubectl get secret -n <namespace> 截图，敏感信息未明文暴露
+11
+ConfigMap创建验
+证
+kubectl get configmap -n <namespace> 截图
+12
+后端Deployment验
+证
+kubectl get deployment -n <namespace> 截图，显示 READY: 2/2
+13
+前端Deployment验
+证
+kubectl get deployment -n <namespace> 截图，显示 READY: 2/2
+14
+所有Pod状态验证
+kubectl get pods -n <namespace> 全部Running截图
+4. 为数据库（如MySQL/PostgreSQL）创建StatefulSet（副本数1）和PersistentVolumeClaim（存储空间 ≥ 
+1Gi）。
+5. 为前端和后端分别创建Service（ClusterIP或NodePort），实现服务发现。
+6. 使用Secret管理敏感信息（数据库密码、JWT密钥、API密钥等）。
+7. 使用ConfigMap管理应用配置文件（环境变量、Nginx配置等）。
+8. 可选但推荐：使用Ingress配置统一访问入口（域名/路径路由）。
+四、部署与验证
+1. 按正确顺序部署资源：存储 → 数据库StatefulSet → 后端Deployment → 前端Deployment → Ingress（如使
+用）。
+2. 验证所有Pod状态均为 Running，所有PVC状态为 Bound。
+3. 验证前端页面可正常访问，后端API健康检查返回正常。
+4. 验证项目核心功能完整可用（如增删改查、用户认证等）。
+5. 验证数据持久化：提交数据后删除数据库Pod，重建后数据完整保留。
+📝 检查要求清单
+ 
+
+--- Page 9 ---
+序
+号
+检查项
+要求
+15
+前端访问验证
+浏览器访问前端页面截图（显示项目完整界面）
+16
+后端健康检查
+访问后端健康检查接口返回JSON截图
+17
+核心功能验证
+项目核心功能操作截图3张以上（如数据增删改查）
+18
+数据持久化测试
+提交数据后的页面截图 + 删除数据库Pod命令截图 + 重建后数据完整截图
+19
+完整YAML文件
+提交 k8s/ 目录下所有YAML文件（Deployment、Service、StatefulSet、PVC、
+Secret、ConfigMap）
+📌 说明
+ 
+前置依赖：学生需拥有一个完整的前后端分离项目（课程设计/毕业设计/个人作品均可）。
+运行环境：本任务基于 Docker Desktop 自带的 Kubernetes 集群（单节点，执行 kubectl get nodes 显示 docker-
+desktop 节点状态为 Ready）。
+镜像构建：由于 Docker Desktop 为单节点集群，镜像构建后已在本地节点可用，无需额外分发。
+存储支持：Docker Desktop 默认提供 standard StorageClass，PVC 提交后自动绑定。
+项目复杂度要求：至少包含前端 + 后端 + 数据库三个核心组件，纯静态项目不适用。
+技术栈兼容性：如项目使用Java/Python/Go等非Node.js技术栈，需确保Dockerfile正确配置运行环境。
+加分项：配置Ingress统一入口、实现滚动更新与回滚、配置HPA自动伸缩。
+完成本拓展方向 = 具备将个人完整项目容器化并部署到Kubernetes集群的独立能力，为后续进入生产环境实战打下
+坚实基础。 🚀
+

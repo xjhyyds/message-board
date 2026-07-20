@@ -1,0 +1,86 @@
+方向二：接入MySQL数据库
+ 
+📋 任务概述
+ 
+在前序任务中，班级留言板的后端服务（message-api）将留言数据存储在Node.js进程的内存中。一旦Pod因故障重
+启、滚动更新或手动删除，所有留言数据将永久丢失。
+本次任务要求你在已有Kubernetes集群中部署MySQL有状态服务，并改造后端应用，将存储引擎从内存切换为
+MySQL数据库，实现留言数据的持久化存储。
+最终目标：掌握有状态应用（StatefulSet）在Kubernetes集群中的部署方法，理解PersistentVolumeClaim持久化存储与
+服务间依赖治理的运维实践。
+🎯 任务要求
+ 
+在已完成班级留言板基础部署（前端 + 后端，2个Deployment、2个Service、1个ConfigMap）的Kubernetes集群中，
+完成以下操作：
+数据库资源部署：创建Secret存储MySQL密码（Base64编码），创建PVC申请1Gi存储空间，编写init.sql初始化脚本
+（创建messages表，字段：id自增主键、name、content、created_at，并插入一条默认留言"MySQL数据库已成功接
+入！"），使用StatefulSet部署MySQL 5.7（副本数1），挂载PVC到/var/lib/mysql，挂载初始化脚本到/docker-
+entrypoint-initdb.d，创建Headless Service（clusterIP: None）供StatefulSet使用。
+后端应用改造：在backend项目中安装mysql2驱动，创建数据库连接池模块（db.js），改造POST /messages接口为
+INSERT语句，改造GET /messages接口为SELECT查询，在应用启动时执行SELECT 1检测数据库连通性（连接失败
+则进程退出，触发K8s重启），重新构建镜像并标记为message-api:v2。
+应用部署更新：修改api-deployment.yaml 添加数据库环境变量（DB_HOST=message-db-service 、
+DB_USER=app_user、DB_PASSWORD从Secret引用、DB_NAME=messages_db），为API容器添加startupProbe启动
+探针（failureThreshold: 30，periodSeconds: 5）防止数据库启动慢导致Pod被误判为CrashLoopBackOff，按顺序先部
+署数据库资源再更新API Deployment。
+数据持久化验证：通过前端提交3条留言，手动删除message-db-0 Pod（模拟故障），等待StatefulSet自动重建后刷新
+前端页面，确认所有留言数据完整保留。
+
+--- Page 4 ---
+序
+号
+检查项
+要求
+1
+Secret创建验证
+kubectl get secret db-secret -n message-board -o yaml 截图，密码字段为Base64
+编码，未明文暴露
+2
+PVC绑定状态
+kubectl get pvc -n message-board 显示 STATUS: Bound 截图
+3
+StatefulSet启动
+验证
+kubectl get statefulset -n message-board 显示 READY: 1/1 截图
+4
+数据库初始化
+验证
+kubectl logs message-db-0 -n message-board 截图，显示 ready for connections，
+且 messages 表中存在默认留言
+5
+API代码改造
+提交 backend/db.js 核心代码截图，展示数据库连接池配置
+6
+新镜像构建验
+证
+docker images 显示 message-api:v2 截图
+7
+环境变量注入
+验证
+kubectl describe pod message-api-xxx -n message-board 截图，显示 DB_HOST、
+DB_USER、DB_NAME 等环境变量已注入
+8
+启动探针配置
+验证
+kubectl get deployment message-api -n message-board -o yaml 截图，显示
+startupProbe 配置段
+9
+数据持久化测
+试
+提交3条留言后的页面截图 + kubectl delete pod message-db-0 -n message-board 命
+令截图 + 重建后留言列表完整截图（数据不丢失）
+📝 检查要求清单
+ 
+📌 说明
+ 
+前置依赖：必须已完成班级留言板基础部署（message-api 和 message-frontend 两个Deployment运行正常）。
+运行环境：本任务基于 Docker Desktop 自带的 Kubernetes 集群（单节点，执行 kubectl get nodes 显示 docker-
+desktop 节点状态为 Ready）。
+镜像构建：由于 Docker Desktop 为单节点集群，镜像构建后已在本地节点可用，无需额外分发。直接执行 docker 
+build -t message-api:v2 ./backend 即可。
+存储支持：Docker Desktop 默认提供 standard StorageClass，PVC 提交后自动绑定，无需额外配置。
+关键概念：本任务涉及StatefulSet、PVC、Headless Service、Secret、ConfigMap、启动探针等核心K8s概念，是理
+解有状态服务部署的典型场景。
+完成本任务 = 具备在Kubernetes集群中部署和管理有状态数据库服务的能力。 🚀
+
+--- Page 5 ---

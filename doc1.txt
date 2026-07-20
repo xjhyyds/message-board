@@ -1,0 +1,551 @@
+--- Page 1 ---
+班级留言板云平台综合实训部署文档 
+本文档用于“云平台综合实训”课程。目标是让学生通过一个 Web 项目，完成 Docker 容器化、Docker Compose 编
+排、Kubernetes 部署、服务访问、配置修改、滚动更新和基础排错。
+1. 项目目标
+ 
+本项目名为“班级留言板”。最终效果如下：
+打开网页后可以看到留言输入框。
+输入姓名和留言内容后点击提交。
+页面可以显示已经提交的留言。
+后端提供健康检查接口和留言接口。
+项目可以用 Docker 单独运行，也可以用 Docker Compose 一键运行。
+项目可以部署到 Kubernetes 中，通过 Service 对外访问。
+2. 准备环境
+ 
+请提前安装以下软件：
+Docker Desktop
+Node.js，建议 18 或以上
+kubectl
+Kubernetes 环境，可以使用 Docker Desktop 自带 Kubernetes、Minikube 或学校提供的集群
+验证命令：
+如果使用 Docker Desktop Kubernetes，请在 Docker Desktop 设置中启用 Kubernetes。
+3. 创建项目目录
+ 
+在电脑上创建项目目录：
+docker version
+docker compose version
+node -v
+npm -v
+kubectl version --client
+
+--- Page 2 ---
+最终目录结构如下：
+4. 编写后端接口
+ 
+进入 backend 目录：
+创建 package.json：
+创建 server.js：
+mkdir message-board
+cd message-board
+mkdir frontend
+mkdir backend
+mkdir k8s
+message-board
+├─ backend
+│  ├─ package.json
+│  ├─ server.js
+│  └─ Dockerfile
+├─ frontend
+│  ├─ index.html
+│  ├─ app.js
+│  ├─ config.js
+│  └─ Dockerfile
+├─ k8s
+│  ├─ namespace.yaml
+│  ├─ api-deployment.yaml
+│  ├─ api-service.yaml
+│  ├─ frontend-configmap.yaml
+│  ├─ frontend-deployment.yaml
+│  └─ frontend-service.yaml
+└─ compose.yaml
+cd backend
+{
+  "name": "message-board-api",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.3"
+  }
+}
+const express = require("express");
+const cors = require("cors");
+
+--- Page 3 ---
+创建 Dockerfile：
+const app = express();
+const port = process.env.PORT || 3000;
+app.use(cors());
+app.use(express.json());
+let messages = [
+  {
+    name: "老师",
+    content: "欢迎来到云平台综合实训。",
+    time: new Date().toLocaleString("zh-CN")
+  }
+];
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", service: "message-board-api" });
+});
+app.get("/messages", (req, res) => {
+  res.json(messages);
+});
+app.post("/messages", (req, res) => {
+  const name = String(req.body.name || "").trim();
+  const content = String(req.body.content || "").trim();
+  if (!name || !content) {
+    return res.status(400).json({ message: "姓名和留言内容不能为空" });
+  }
+  const message = {
+    name,
+    content,
+    time: new Date().toLocaleString("zh-CN")
+  };
+  messages.unshift(message);
+  res.status(201).json(message);
+});
+app.listen(port, () => {
+  console.log(`message-board-api running on port ${port}`);
+});
+
+--- Page 4 ---
+返回项目根目录：
+5. 编写前端页面
+ 
+进入 frontend 目录：
+创建 index.html：
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json ./
+RUN npm install --omit=dev
+COPY server.js ./
+EXPOSE 3000
+CMD ["npm", "start"]
+cd ..
+cd frontend
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>班级留言板</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Microsoft YaHei", sans-serif;
+        background: #f2f6f9;
+        color: #1f2937;
+      }
+      main {
+        max-width: 760px;
+        margin: 40px auto;
+        padding: 24px;
+        background: #ffffff;
+        border: 1px solid #d7e0e8;
+      }
+      h1 {
+        margin-top: 0;
+        color: #0f766e;
+      }
+      label {
+
+--- Page 5 ---
+        display: block;
+        margin-top: 14px;
+        font-weight: 700;
+      }
+      input,
+      textarea,
+      button {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 8px;
+        padding: 10px;
+        font-size: 16px;
+      }
+      button {
+        margin-top: 16px;
+        border: 0;
+        background: #0f766e;
+        color: white;
+        cursor: pointer;
+      }
+      .message {
+        margin-top: 14px;
+        padding: 12px;
+        background: #f8fafc;
+        border-left: 4px solid #0f766e;
+      }
+      .meta {
+        color: #64748b;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title">班级留言板</h1>
+      <p id="welcome">请提交你的实训留言。</p>
+      <label for="name">姓名</label>
+      <input id="name" placeholder="例如：张三" />
+      <label for="content">留言内容</label>
+      <textarea id="content" rows="4" placeholder="写一句今天的实训收获"></textarea>
+      <button id="submit">提交留言</button>
+      <h2>留言列表</h2>
+      <section id="messages"></section>
+    </main>
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
+
+--- Page 6 ---
+创建 app.js：
+创建 config.js：
+const config = window.APP_CONFIG || {};
+const apiBaseUrl = config.API_BASE_URL || "http://localhost:3000";
+document.getElementById("title").textContent = config.APP_TITLE || "班级留言板";
+document.getElementById("welcome").textContent =
+  config.WELCOME_TEXT || "请提交你的实训留言。";
+const nameInput = document.getElementById("name");
+const contentInput = document.getElementById("content");
+const submitButton = document.getElementById("submit");
+const messagesSection = document.getElementById("messages");
+async function loadMessages() {
+  const response = await fetch(`${apiBaseUrl}/messages`);
+  const messages = await response.json();
+  messagesSection.innerHTML = messages
+    .map(
+      (item) => `
+        <article class="message">
+          <strong>${item.name}</strong>
+          <p>${item.content}</p>
+          <div class="meta">${item.time}</div>
+        </article>
+      `
+    )
+    .join("");
+}
+submitButton.addEventListener("click", async () => {
+  const name = nameInput.value.trim();
+  const content = contentInput.value.trim();
+  if (!name || !content) {
+    alert("请填写姓名和留言内容");
+    return;
+  }
+  await fetch(`${apiBaseUrl}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ name, content })
+  });
+  contentInput.value = "";
+  await loadMessages();
+});
+loadMessages().catch(() => {
+  messagesSection.innerHTML = "<p>留言加载失败，请检查后端服务是否启动。</p>";
+});
+
+--- Page 7 ---
+创建 Dockerfile：
+返回项目根目录：
+6. 本地先运行后端
+ 
+进入后端目录安装依赖：
+看到类似内容表示后端启动成功：
+打开浏览器访问：
+如果看到 status: ok，说明后端正常。
+停止服务可以按：
+返回项目根目录：
+window.APP_CONFIG = {
+  APP_TITLE: "班级留言板",
+  WELCOME_TEXT: "请提交你的实训留言。",
+  API_BASE_URL: "http://localhost:3000"
+};
+FROM nginx:1.25-alpine
+COPY index.html /usr/share/nginx/html/index.html
+COPY app.js /usr/share/nginx/html/app.js
+COPY config.js /usr/share/nginx/html/config.js
+EXPOSE 80
+cd ..
+cd backend
+npm install
+npm start
+message-board-api running on port 3000
+http://localhost:3000/health
+Ctrl + C
+cd ..
+
+--- Page 8 ---
+7. 使用 Docker 构建镜像
+ 
+构建后端镜像：
+构建前端镜像：
+查看镜像：
+应该能看到：
+8. 使用 Docker 单独运行项目
+ 
+先运行后端：
+再运行前端：
+浏览器访问：
+测试后端健康检查：
+查看容器状态：
+查看日志：
+停止并删除容器：
+docker build -t message-api:v1 ./backend
+docker build -t message-frontend:v1 ./frontend
+docker images
+message-api        v1
+message-frontend   v1
+docker run -d --name message-api -p 3000:3000 message-api:v1
+docker run -d --name message-frontend -p 8080:80 message-frontend:v1
+http://localhost:8080
+http://localhost:3000/health
+docker ps
+docker logs message-api
+docker logs message-frontend
+
+--- Page 9 ---
+9. 使用 Docker Compose 一键启动
+ 
+在项目根目录创建 compose.yaml：
+启动：
+查看状态：
+浏览器访问：
+查看日志：
+停止：
+docker stop message-api message-frontend
+docker rm message-api message-frontend
+services:
+  api:
+    build:
+      context: ./backend
+    image: message-api:v1
+    container_name: message-api
+    ports:
+      - "3000:3000"
+  frontend:
+    build:
+      context: ./frontend
+    image: message-frontend:v1
+    container_name: message-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+docker compose up -d --build
+docker compose ps
+http://localhost:8080
+docker compose logs api
+docker compose logs frontend
+docker compose down
+
+--- Page 10 ---
+10. 准备 Kubernetes 部署文件
+ 
+进入 k8s 目录：
+创建 namespace.yaml：
+创建 api-deployment.yaml：
+创建 api-service.yaml：
+创建 frontend-configmap.yaml：
+cd k8s
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: message-board
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-api
+  namespace: message-board
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: message-api
+  template:
+    metadata:
+      labels:
+        app: message-api
+    spec:
+      containers:
+        - name: message-api
+          image: message-api:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-api
+  namespace: message-board
+spec:
+  type: NodePort
+  selector:
+    app: message-api
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30080
+
+--- Page 11 ---
+说明：这里的 API_BASE_URL 使用 http://localhost:30080，是因为后端 Service 使用了 NodePort 30080。如果学校
+集群访问地址不是本机，请把 localhost 改成老师提供的节点 IP。
+创建 frontend-deployment.yaml：
+创建 frontend-service.yaml：
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: message-board
+data:
+  config.js: |
+    window.APP_CONFIG = {
+      APP_TITLE: "K8s班级留言板",
+      WELCOME_TEXT: "这是部署在Kubernetes中的留言板。",
+      API_BASE_URL: "http://localhost:30080"
+    };
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-frontend
+  namespace: message-board
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: message-frontend
+  template:
+    metadata:
+      labels:
+        app: message-frontend
+    spec:
+      containers:
+        - name: message-frontend
+          image: message-frontend:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: frontend-config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+      volumes:
+        - name: frontend-config
+          configMap:
+            name: frontend-config
+
+--- Page 12 ---
+返回项目根目录：
+11. 部署到 Kubernetes
+ 
+先确认 kubectl 可以连接集群：
+如果能看到节点，说明集群可用。
+应用部署文件：
+查看资源：
+浏览器访问前端：
+浏览器访问后端健康检查：
+如果不是 Docker Desktop Kubernetes，而是学校集群，请把 localhost 换成节点 IP：
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-frontend
+  namespace: message-board
+spec:
+  type: NodePort
+  selector:
+    app: message-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30081
+cd ..
+kubectl get nodes
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/api-deployment.yaml
+kubectl apply -f k8s/api-service.yaml
+kubectl apply -f k8s/frontend-configmap.yaml
+kubectl apply -f k8s/frontend-deployment.yaml
+kubectl apply -f k8s/frontend-service.yaml
+kubectl get all -n message-board
+kubectl get configmap -n message-board
+http://localhost:30081
+http://localhost:30080/health
+
+--- Page 13 ---
+12. 常用 Kubernetes 排错命令
+ 
+查看 Pod 是否正常：
+查看某个 Pod 的详细信息：
+查看后端日志：
+查看前端日志：
+查看 Service：
+常见问题：
+页面打不开：检查 message-frontend 的 Pod 是否 Running，检查访问端口是不是 30081。
+留言加载失败：检查 message-api 的 Pod 是否 Running，检查 http://localhost:30080/health 是否可访问。
+Pod 一直 ImagePullBackOff：检查镜像名是否正确，检查镜像是否已经构建。
+修改配置后页面没变化：重启前端 Pod 或执行滚动重启。
+滚动重启前端：
+13. 修改 ConfigMap
+ 
+如果想修改页面标题或欢迎语，编辑 k8s/frontend-configmap.yaml：
+http://节点IP:30081
+http://节点IP:30080/health
+kubectl get pods -n message-board
+kubectl describe pod Pod名称 -n message-board
+kubectl logs deployment/message-api -n message-board
+kubectl logs deployment/message-frontend -n message-board
+kubectl get svc -n message-board
+kubectl rollout restart deployment/message-frontend -n message-board
+
+--- Page 14 ---
+重新应用配置：
+再次访问：
+14. 滚动更新
+ 
+修改 frontend/index.html 或 frontend/app.js 后，重新构建新版本镜像：
+更新 Kubernetes 中的镜像：
+查看更新状态：
+如果更新失败，可以回滚：
+15. 清理环境
+ 
+删除 Kubernetes 资源：
+停止 Docker Compose：
+删除本地测试容器：
+data:
+  config.js: |
+    window.APP_CONFIG = {
+      APP_TITLE: "云平台实训留言板",
+      WELCOME_TEXT: "请记录今天完成的Docker和K8s任务。",
+      API_BASE_URL: "http://localhost:30080"
+    };
+kubectl apply -f k8s/frontend-configmap.yaml
+kubectl rollout restart deployment/message-frontend -n message-board
+http://localhost:30081
+docker build -t message-frontend:v2 ./frontend
+kubectl set image deployment/message-frontend message-frontend=message-frontend:v2 -n message-
+board
+kubectl rollout status deployment/message-frontend -n message-board
+kubectl rollout undo deployment/message-frontend -n message-board
+kubectl delete namespace message-board
+docker compose down
+
+--- Page 15 ---
+如果提示容器不存在，可以忽略。
+ 
+16. 官方参考资料
+ 
+Docker官方文档：https://docs.docker.com/
+Dockerfile参考：https://docs.docker.com/reference/dockerfile/
+Docker Compose文档：https://docs.docker.com/compose/
+Kubernetes官方文档：https://kubernetes.io/docs/home/
+Kubernetes Deployment文档：https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+Kubernetes Service文档：https://kubernetes.io/docs/concepts/services-networking/service/
+Kubernetes ConfigMap文档：https://kubernetes.io/docs/concepts/configuration/configmap/
+docker rm -f message-api message-frontend
+
